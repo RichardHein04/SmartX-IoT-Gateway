@@ -15,6 +15,10 @@ select {
     font: inherit;
 }
 
+button {
+    cursor: pointer;
+}
+
 .app {
     min-height: 100vh;
 }
@@ -29,7 +33,11 @@ select {
     background: #0d1322;
 }
 
-.brand {
+.brand-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #f4f7fb;
     font-size: 22px;
     font-weight: 800;
     letter-spacing: 2px;
@@ -62,18 +70,42 @@ select {
         box-shadow: 0 0 12px rgba(54, 217, 138, 0.7);
     }
 
+.navigation {
+    display: flex;
+    gap: 6px;
+    padding: 10px 5%;
+    border-bottom: 1px solid #20283a;
+    background: #0b1020;
+}
+
+    .navigation button {
+        padding: 9px 13px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: #78859c;
+        font-size: 12px;
+    }
+
+        .navigation button:hover,
+        .navigation button.active {
+            background: #182238;
+            color: #f4f7fb;
+        }
+
 .dashboard {
     width: min(1350px, 90%);
     margin: auto;
     padding: 48px 0;
 }
 
-.dashboard-heading {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 30px;
-    margin-bottom: 34px;
+.startup {
+    padding: 25px 0 50px;
+}
+
+.startup-copy {
+    max-width: 750px;
+    margin-bottom: 45px;
 }
 
 .eyebrow {
@@ -84,18 +116,121 @@ select {
     letter-spacing: 1.8px;
 }
 
+.startup h1,
 .dashboard-heading h1 {
     margin: 0;
-    font-size: clamp(32px, 5vw, 52px);
-    line-height: 1;
+    font-size: clamp(36px, 5vw, 60px);
+    line-height: 1.02;
 }
 
+.startup-copy p,
 .dashboard-heading p {
-    max-width: 650px;
-    margin: 15px 0 0;
+    max-width: 680px;
+    margin: 18px 0 0;
     color: #98a5bb;
-    font-size: 16px;
-    line-height: 1.6;
+    font-size: 17px;
+    line-height: 1.65;
+}
+
+.startup-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 22px;
+    padding: 9px 13px;
+    border: 1px solid #26334b;
+    border-radius: 25px;
+    color: #9eabc1;
+    font-size: 12px;
+}
+
+.pillar-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+}
+
+.pillar-card {
+    min-height: 300px;
+    padding: 26px;
+    border: 1px solid #202a3e;
+    border-radius: 16px;
+    background: #0f1525;
+}
+
+    .pillar-card.active {
+        border-color: #456ddf;
+        background: linear-gradient( 145deg, #111b32, #0f1525 );
+    }
+
+    .pillar-card.disabled {
+        opacity: 0.52;
+    }
+
+.pillar-number {
+    color: #68758c;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.pillar-label {
+    display: block;
+    margin-top: 28px;
+    color: #6f7d94;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+}
+
+.pillar-card h2 {
+    margin: 12px 0 10px;
+    font-size: 21px;
+    line-height: 1.25;
+}
+
+.pillar-card p {
+    min-height: 66px;
+    margin: 0;
+    color: #8996ab;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.primary-button,
+.disabled-button,
+.small-button,
+.back-button {
+    border: 0;
+    border-radius: 8px;
+}
+
+.primary-button {
+    margin-top: 20px;
+    padding: 11px 16px;
+    background: #4d78ff;
+    color: white;
+    font-weight: 700;
+}
+
+    .primary-button:hover {
+        background: #6288ff;
+    }
+
+.disabled-button {
+    margin-top: 20px;
+    padding: 11px 16px;
+    background: #292f3d;
+    color: #727d91;
+    cursor: not-allowed;
+}
+
+.dashboard-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 30px;
+    margin-bottom: 34px;
 }
 
 .live-indicator {
@@ -161,7 +296,6 @@ select {
     border-top: 3px solid #e05252;
 }
 
-.pulse-panel,
 .panel {
     margin-top: 18px;
     padding: 24px;
@@ -264,7 +398,6 @@ select {
 .anomaly-top {
     display: flex;
     gap: 12px;
-    align-items: center;
     color: #68758c;
     font-size: 11px;
     font-weight: 700;
@@ -314,10 +447,6 @@ select {
     grid-template-columns: 1fr 1fr;
     gap: 18px;
 }
-
-    .content-grid .panel {
-        min-width: 0;
-    }
 
 .sensor-list,
 .telemetry-list {
@@ -412,10 +541,98 @@ select {
     white-space: nowrap;
 }
 
+.small-button {
+    padding: 8px 12px;
+    background: #182238;
+    color: #aebbd0;
+    font-size: 11px;
+}
+
+    .small-button:hover {
+        background: #243252;
+    }
+
 .empty {
     padding: 35px 0;
     color: #66738a;
     text-align: center;
+}
+
+.form-page {
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+.back-button {
+    padding: 0;
+    background: none;
+    color: #8794aa;
+    font-size: 13px;
+}
+
+    .back-button:hover {
+        color: #f4f7fb;
+    }
+
+.form-card {
+    margin-top: 25px;
+    padding: 32px;
+    border: 1px solid #202a3e;
+    border-radius: 16px;
+    background: #0d1322;
+}
+
+    .form-card h1 {
+        margin: 0;
+        font-size: 34px;
+    }
+
+.form-intro {
+    color: #8996ab;
+    line-height: 1.6;
+}
+
+.form-card form {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-card label {
+    margin: 18px 0 7px;
+    color: #c2cada;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.form-card input,
+.form-card select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #2b3549;
+    border-radius: 8px;
+    outline: none;
+    background: #101827;
+    color: #f4f7fb;
+}
+
+    .form-card input:focus,
+    .form-card select:focus {
+        border-color: #4d78ff;
+    }
+
+.upload-hint {
+    margin-top: 8px;
+    color: #69768c;
+}
+
+.form-message {
+    margin-top: 18px;
+    padding: 12px;
+    border: 1px solid #293752;
+    border-radius: 8px;
+    background: #111b2d;
+    color: #aebbd0;
+    font-size: 13px;
 }
 
 .footer {
@@ -429,7 +646,8 @@ select {
     font-size: 11px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 950px) {
+    .pillar-grid,
     .stats-grid {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -444,11 +662,15 @@ select {
     }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 620px) {
     .topbar {
         align-items: flex-start;
         flex-direction: column;
         gap: 14px;
+    }
+
+    .navigation {
+        overflow-x: auto;
     }
 
     .dashboard {
@@ -456,13 +678,19 @@ select {
         padding: 30px 0;
     }
 
+    .pillar-grid,
     .stats-grid {
         grid-template-columns: 1fr;
     }
 
-    .pulse-panel,
-    .panel {
+    .panel,
+    .form-card {
         padding: 18px;
+    }
+
+    .startup h1,
+    .dashboard-heading h1 {
+        font-size: 35px;
     }
 
     .footer {
