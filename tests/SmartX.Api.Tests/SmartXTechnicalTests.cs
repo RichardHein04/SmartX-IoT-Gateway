@@ -158,4 +158,107 @@ public class SmartXTechnicalTests
 
         Assert.Empty(errors);
     }
+
+    [Fact]
+    public void CommandStore_UndoReversesLastCommandWithoutAddingUndoEntry()
+    {
+        var store = new CommandStore();
+        var first = new CommandRecord
+        {
+            DeviceIdentifier = "DEVICE-01",
+            CommandType = "Relay",
+            Value = true,
+            Timestamp = DateTime.UtcNow
+        };
+        store.RecordCommand(first);
+
+        var second = new CommandRecord
+        {
+            DeviceIdentifier = "DEVICE-01",
+            CommandType = "Relay",
+            Value = false,
+            Timestamp = DateTime.UtcNow.AddMilliseconds(1)
+        };
+        store.RecordCommand(second);
+
+        Assert.True(store.TryUndo(out var undoCommand));
+        Assert.NotNull(undoCommand);
+        Assert.True(undoCommand.Value);
+        Assert.Equal(1, store.UndoCount);
+        Assert.True(store.DeviceStates["DEVICE-01:Relay"]);
+
+        Assert.True(store.TryUndo(out var secondUndo));
+        Assert.NotNull(secondUndo);
+        Assert.False(secondUndo.Value);
+        Assert.Equal(0, store.UndoCount);
+        Assert.False(store.DeviceStates["DEVICE-01:Relay"]);
+        Assert.False(store.TryUndo(out _));
+    }
+
+    [Fact]
+    public void CommandStore_TimelineIsChronological()
+    {
+        var store = new CommandStore();
+        store.RecordCommand(new CommandRecord
+        {
+            DeviceIdentifier = "DEVICE-01",
+            CommandType = "Relay",
+            Value = true,
+            Timestamp = DateTime.UtcNow.AddMinutes(1)
+        });
+        store.RecordCommand(new CommandRecord
+        {
+            DeviceIdentifier = "DEVICE-02",
+            CommandType = "Pump",
+            Value = true,
+            Timestamp = DateTime.UtcNow
+        });
+
+        var timeline = store.GetTimeline();
+
+        Assert.Equal(2, timeline.Count);
+        Assert.True(timeline[0].Timestamp <= timeline[1].Timestamp);
+    }
+
+    [Fact]
+    public void CommandStore_AlertIdentifiersAreUniqueIgnoringCase()
+    {
+        var store = new CommandStore();
+
+        Assert.True(store.AddAlert("TEMP-001"));
+        Assert.False(store.AddAlert("temp-001"));
+        Assert.Single(store.GetActiveAlerts());
+        Assert.True(store.RemoveAlert("Temp-001"));
+        Assert.Empty(store.GetActiveAlerts());
+    }
+
+    [Fact]
+    public void CommandStore_CriticalCommandIsDequeuedBeforeOrdinaryCommand()
+    {
+        var store = new CommandStore();
+        var ordinary = new CommandRecord
+        {
+            DeviceIdentifier = "DEVICE-01",
+            CommandType = "Relay",
+            Value = true,
+            IsCritical = false
+        };
+        var critical = new CommandRecord
+        {
+            DeviceIdentifier = "DEVICE-02",
+            CommandType = "Pump",
+            Value = true,
+            IsCritical = true
+        };
+
+        store.EnqueueCommand(ordinary);
+        store.EnqueueCommand(critical);
+
+        Assert.True(store.TryDequeueCommand(out var first));
+        Assert.NotNull(first);
+        Assert.True(first.IsCritical);
+        Assert.True(store.TryDequeueCommand(out var second));
+        Assert.NotNull(second);
+        Assert.False(second.IsCritical);
+    }
 }

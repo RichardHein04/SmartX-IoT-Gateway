@@ -11,13 +11,15 @@ const pillars = [
             "Register sensors, ingest live telemetry, validate readings and monitor gateway health.",
         active: true,
     },
+
     {
         id: "commands",
         title: "Real-Time Command Stream & History",
         description:
-            "Command streaming and historical command management will be implemented in Part 2.",
-        active: false,
+            "Issue device commands, monitor processing status, filter command history and undo the latest command.",
+        active: true,
     },
+
     {
         id: "topology",
         title: "Network Topology & Mesh Routing",
@@ -32,27 +34,48 @@ function App() {
 
     const [sensors, setSensors] = useState([]);
     const [telemetry, setTelemetry] = useState([]);
+    const [recommendations, setRecommendations] = useState([]);
+    const [activeAlerts, setActiveAlerts] = useState([]);
+    const [alertInput, setAlertInput] = useState("");
+    const [alertMessage, setAlertMessage] = useState("");
     const [apiStatus, setApiStatus] = useState("Checking...");
     const [lastUpdated, setLastUpdated] = useState(null);
-
     const [deviceIdentifier, setDeviceIdentifier] = useState("");
     const [location, setLocation] = useState("");
     const [category, setCategory] = useState("Environmental");
     const [registrationMessage, setRegistrationMessage] = useState("");
-
     const [selectedSensor, setSelectedSensor] = useState("");
     const [selectedFile, setSelectedFile] = useState(null);
     const [uploadMessage, setUploadMessage] = useState("");
+    const [commands, setCommands] = useState([]);
+    const [commandDevice, setCommandDevice] = useState("");
+    const [commandType, setCommandType] = useState("Pump");
+    const [commandValue, setCommandValue] = useState("true");
+    const [commandCritical, setCommandCritical] = useState(false);
+    const [commandMessage, setCommandMessage] = useState("");
+    const [commandError, setCommandError] = useState("");
+    const [deviceCategoryFilter, setDeviceCategoryFilter] = useState("All");
+    const [deviceStatusFilter, setDeviceStatusFilter] = useState("All");
+    const [commandHistoryFilter, setCommandHistoryFilter] = useState("All");
+
 
     useEffect(() => {
         loadData();
-
         const interval = setInterval(loadData, 3000);
-
         return () => clearInterval(interval);
     }, []);
 
+    // Keep command history refreshed while the Command Stream page is open.
+    useEffect(() => {
+        if (page !== "commands") return;
+
+        loadCommandHistory();
+        const interval = setInterval(loadCommandHistory, 2000);
+        return () => clearInterval(interval);
+    }, [page]);
+
     async function loadData() {
+
         try {
             const healthResponse = await fetch(`${API_URL}/api/health`);
 
@@ -82,6 +105,22 @@ function App() {
                 }
             }
 
+            const recommendationsResponse = await fetch(`${API_URL}/api/recommendations`);
+            if (recommendationsResponse.ok) {
+                const recommendationsData = await recommendationsResponse.json();
+                setRecommendations(
+                    Array.isArray(recommendationsData.recommendations)
+                        ? recommendationsData.recommendations
+                        : []
+                );
+            }
+
+            const alertsResponse = await fetch(`${API_URL}/api/alerts`);
+            if (alertsResponse.ok) {
+                const alertsData = await alertsResponse.json();
+                setActiveAlerts(Array.isArray(alertsData) ? alertsData : []);
+            }
+
             setSensors(Array.isArray(sensorsData) ? sensorsData : []);
             setTelemetry(telemetryData);
             setApiStatus("Connected");
@@ -91,6 +130,144 @@ function App() {
             setApiStatus("Disconnected");
         }
     }
+
+
+    async function registerAlert(event) {
+        event.preventDefault();
+        const alertId = alertInput.trim();
+
+        if (!alertId) {
+            setAlertMessage("Enter an alert identifier first.");
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/api/alerts/${encodeURIComponent(alertId)}`, {
+                method: "POST",
+            });
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error ?? "Could not register alert.");
+            }
+
+            setAlertMessage(result.message ?? "Alert registered.");
+            setAlertInput("");
+            const alertsResponse = await fetch(`${API_URL}/api/alerts`);
+            if (alertsResponse.ok) {
+                const alertsData = await alertsResponse.json();
+                setActiveAlerts(Array.isArray(alertsData) ? alertsData : []);
+            }
+        } catch (error) {
+            setAlertMessage(error.message);
+        }
+    }
+
+    async function resolveAlert(alertId) {
+        try {
+            const response = await fetch(`${API_URL}/api/alerts/${encodeURIComponent(alertId)}`, {
+                method: "DELETE",
+            });
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error ?? "Could not resolve alert.");
+            }
+
+            setActiveAlerts((current) => current.filter((item) => item !== alertId));
+            setAlertMessage(result.message ?? "Alert resolved.");
+        } catch (error) {
+            setAlertMessage(error.message);
+        }
+    }
+
+    async function loadCommandHistory() {
+        try {
+            const response = await fetch(
+                `${API_URL}/api/commands/history`
+            );
+
+            if (!response.ok) {
+                throw new Error("Could not load command history.");
+            }
+
+            const data = await response.json();
+
+            setCommands(Array.isArray(data) ? data : []);
+            setCommandError("");
+        } catch (error) {
+            setCommandError(error.message);
+        }
+    }
+
+    async function issueCommand(event) {
+        event.preventDefault();
+
+        setCommandMessage("");
+        setCommandError("");
+
+        if (!commandDevice) {
+            setCommandError("Please select a registered device.");
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/api/commands`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    deviceIdentifier: commandDevice,
+                    commandType,
+                    value: commandValue === "true",
+                    isCritical: commandCritical,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.error ?? "Could not submit the command."
+                );
+            }
+
+            setCommandMessage(
+                data.message ?? "Command accepted for processing."
+            );
+
+            await loadCommandHistory();
+        } catch (error) {
+            setCommandError(error.message);
+        }
+    }
+
+    async function undoLastCommand() {
+        setCommandMessage("");
+        setCommandError("");
+
+        try {
+            const response = await fetch(
+                `${API_URL}/api/commands/undo`,
+                { method: "POST" }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    data.error ?? "Could not undo the last command."
+                );
+            }
+
+            setCommandMessage(data.message);
+            await loadCommandHistory();
+        } catch (error) {
+            setCommandError(error.message);
+        }
+    }
+
 
     function getHealthStatus(status) {
         if (typeof status === "number") {
@@ -436,6 +613,96 @@ function App() {
                     )}
                 </section>
 
+                <section className="panel">
+                    <div className="section-heading">
+                        <div>
+                            <div className="eyebrow">PREDICTIVE ANALYSIS</div>
+                            <h2>Predictive Recommendations</h2>
+                        </div>
+                        <span className="telemetry-count">
+                            {recommendations.length} recommendations
+                        </span>
+                    </div>
+
+                    {recommendations.length === 0 ? (
+                        <div className="empty">
+                            No recommendations available yet. Waiting for sensor data...
+                        </div>
+                    ) : (
+                        <div className="anomaly-list">
+                            {recommendations.map((recommendation, index) => {
+                                const severity = String(recommendation.severity ?? "Info");
+                                const severityClass = severity.toLowerCase() === "critical"
+                                    ? "critical"
+                                    : severity.toLowerCase() === "warning"
+                                        ? "warning"
+                                        : "healthy";
+
+                                return (
+                                    <div
+                                        className={`anomaly-card ${severityClass}`}
+                                        key={recommendation.id ?? `${recommendation.title}-${index}`}
+                                    >
+                                        <div className="anomaly-icon">
+                                            {severityClass === "critical" ? "!" : "i"}
+                                        </div>
+                                        <div className="anomaly-content">
+                                            <div className="anomaly-top">
+                                                <span className="severity">{severity}</span>
+                                                <span>Recommendation</span>
+                                            </div>
+                                            <h3>{recommendation.title ?? "Suggested action"}</h3>
+                                            <p>
+                                                <strong>Reason:</strong>{" "}
+                                                {recommendation.reason ?? "No reason provided."}
+                                            </p>
+                                            <div className="triage-action">
+                                                <strong>Suggested action</strong>
+                                                <span>{recommendation.action ?? "Continue monitoring."}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </section>
+
+                <section className="panel">
+                    <div className="section-heading">
+                        <div>
+                            <div className="eyebrow">UNIQUE ALERT TRACKING</div>
+                            <h2>Active Alerts</h2>
+                        </div>
+                        <span className="telemetry-count">{activeAlerts.length} active</span>
+                    </div>
+                    <p>Alert identifiers are stored in a case-insensitive HashSet, preventing duplicate active alerts.</p>
+                    <form onSubmit={registerAlert} className="alert-entry-form">
+                        <label htmlFor="alertIdentifier">Alert identifier</label>
+                        <input
+                            id="alertIdentifier"
+                            value={alertInput}
+                            onChange={(event) => setAlertInput(event.target.value)}
+                            placeholder="e.g. TEMP-SERVER-01"
+                            maxLength={120}
+                        />
+                        <button className="primary-button" type="submit">Register Alert</button>
+                    </form>
+                    {alertMessage && <div className="form-message" role="status">{alertMessage}</div>}
+                    {activeAlerts.length === 0 ? (
+                        <div className="empty">No active alerts. Register an alert to demonstrate unique tracking.</div>
+                    ) : (
+                        <div className="sensor-list">
+                            {activeAlerts.map((alertId) => (
+                                <div className="sensor-row" key={alertId}>
+                                    <div className="sensor-main"><strong>{alertId}</strong></div>
+                                    <button className="small-button" type="button" onClick={() => resolveAlert(alertId)}>Resolve</button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+
                 <section className="content-grid">
                     <div className="panel">
                         <div className="section-heading">
@@ -652,6 +919,309 @@ function App() {
         );
     }
 
+
+    function CommandStream() {
+        const filteredSensors = sensors.filter((sensor) => {
+            const categoryMatches =
+                deviceCategoryFilter === "All" ||
+                sensor.category === deviceCategoryFilter;
+
+            const statusMatches =
+                deviceStatusFilter === "All" ||
+                getHealthStatus(sensor.healthStatus) ===
+                deviceStatusFilter;
+
+            return categoryMatches && statusMatches;
+        });
+
+        const filteredCommands = commands.filter((command) =>
+            commandHistoryFilter === "All" ||
+            command.status === commandHistoryFilter
+        );
+
+        return (
+            <section className="form-page">
+                <div className="form-card">
+                    <div className="eyebrow">
+                        OPERATOR CONTROLS
+                    </div>
+
+                    <h1>Real-Time Command Stream</h1>
+
+                    <p className="form-intro">
+                        Send simulated commands to registered devices
+                        and inspect their processing history.
+                    </p>
+
+                    <form onSubmit={issueCommand}>
+                        <label htmlFor="commandDevice">
+                            Registered Device
+                        </label>
+
+                        <select
+                            id="commandDevice"
+                            value={commandDevice}
+                            onChange={(event) =>
+                                setCommandDevice(event.target.value)
+                            }
+                            required
+                        >
+                            <option value="">Select a device</option>
+
+                            {sensors.map((sensor) => (
+                                <option
+                                    key={sensor.id}
+                                    value={sensor.deviceIdentifier}
+                                >
+                                    {sensor.deviceIdentifier} —{" "}
+                                    {sensor.category}
+                                </option>
+                            ))}
+                        </select>
+
+                        <label htmlFor="commandType">
+                            Command Type
+                        </label>
+
+                        <select
+                            id="commandType"
+                            value={commandType}
+                            onChange={(event) =>
+                                setCommandType(event.target.value)
+                            }
+                        >
+                            <option value="Pump">Pump</option>
+                            <option value="Relay">Relay</option>
+                            <option value="Valve">Valve</option>
+                            <option value="SmartPlug">Smart Plug</option>
+                        </select>
+
+                        <label htmlFor="commandValue">
+                            Requested State
+                        </label>
+
+                        <select
+                            id="commandValue"
+                            value={commandValue}
+                            onChange={(event) =>
+                                setCommandValue(event.target.value)
+                            }
+                        >
+                            <option value="true">On</option>
+                            <option value="false">Off</option>
+                        </select>
+
+                        <label>
+                            <input
+                                type="checkbox"
+                                checked={commandCritical}
+                                onChange={(event) =>
+                                    setCommandCritical(
+                                        event.target.checked
+                                    )
+                                }
+                            />
+                            Mark as critical
+                        </label>
+
+                        <button
+                            className="primary-button"
+                            type="submit"
+                        >
+                            Send Command
+                        </button>
+                    </form>
+
+                    {commandMessage && (
+                        <div className="form-message">
+                            {commandMessage}
+                        </div>
+                    )}
+
+                    {commandError && (
+                        <div className="form-message">
+                            {commandError}
+                        </div>
+                    )}
+                </div>
+
+                <div className="panel">
+                    <div className="section-heading">
+                        <div>
+                            <div className="eyebrow">
+                                DEVICE FILTERS
+                            </div>
+
+                            <h2>Registered Devices</h2>
+                        </div>
+                    </div>
+
+                    <label htmlFor="categoryFilter">
+                        Category
+                    </label>
+
+                    <select
+                        id="categoryFilter"
+                        value={deviceCategoryFilter}
+                        onChange={(event) =>
+                            setDeviceCategoryFilter(event.target.value)
+                        }
+                    >
+                        <option value="All">All categories</option>
+                        <option value="Environmental">Environmental</option>
+                        <option value="Energy">Energy</option>
+                        <option value="Security">Security</option>
+                        <option value="Industrial">Industrial</option>
+                    </select>
+
+                    <label htmlFor="statusFilter">
+                        Device Health
+                    </label>
+
+                    <select
+                        id="statusFilter"
+                        value={deviceStatusFilter}
+                        onChange={(event) =>
+                            setDeviceStatusFilter(event.target.value)
+                        }
+                    >
+                        <option value="All">All statuses</option>
+                        <option value="Healthy">Healthy</option>
+                        <option value="Warning">Warning</option>
+                        <option value="Critical">Critical</option>
+                        <option value="Offline">Offline</option>
+                    </select>
+
+                    {filteredSensors.length === 0 ? (
+                        <div className="empty">
+                            No devices match these filters.
+                        </div>
+                    ) : (
+                        <div className="sensor-list">
+                            {filteredSensors.map((sensor) => (
+                                <div
+                                    className="sensor-row"
+                                    key={sensor.id}
+                                >
+                                    <div className="sensor-main">
+                                        <div>
+                                            <strong>
+                                                {sensor.deviceIdentifier}
+                                            </strong>
+
+                                            <small>
+                                                {sensor.location} ·{" "}
+                                                {sensor.category}
+                                            </small>
+                                        </div>
+                                    </div>
+
+                                    <span
+                                        className={`status-badge ${statusClass(
+                                            sensor.healthStatus
+                                        )}`}
+                                    >
+                                        {getHealthStatus(
+                                            sensor.healthStatus
+                                        )}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="panel">
+                    <div className="section-heading">
+                        <div>
+                            <div className="eyebrow">
+                                COMMAND HISTORY
+                            </div>
+
+                            <h2>Recent Commands</h2>
+                        </div>
+
+                        <button
+                            className="small-button"
+                            onClick={loadCommandHistory}
+                        >
+                            Refresh
+                        </button>
+                    </div>
+
+                    <label htmlFor="historyFilter">
+                        Processing Status
+                    </label>
+
+                    <select
+                        id="historyFilter"
+                        value={commandHistoryFilter}
+                        onChange={(event) =>
+                            setCommandHistoryFilter(event.target.value)
+                        }
+                    >
+                        <option value="All">All commands</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Failed">Failed</option>
+                    </select>
+
+                    {filteredCommands.length === 0 ? (
+                        <div className="empty">
+                            No commands match this filter.
+                        </div>
+                    ) : (
+                        <div className="sensor-list">
+                            {filteredCommands.map((command) => (
+                                <div
+                                    className="sensor-row"
+                                    key={command.id}
+                                >
+                                    <div className="sensor-main">
+                                        <div>
+                                            <strong>
+                                                {command.deviceIdentifier}
+                                            </strong>
+
+                                            <small>
+                                                {command.commandType} ·{" "}
+                                                {command.value ? "On" : "Off"}
+                                                {command.isCritical
+                                                    ? " · Critical"
+                                                    : ""}
+                                            </small>
+
+                                            <small>
+                                                {command.timestamp
+                                                    ? new Date(
+                                                        command.timestamp
+                                                    ).toLocaleString()
+                                                    : "Time unavailable"}
+                                            </small>
+                                        </div>
+                                    </div>
+
+                                    <span className="status-badge">
+                                        {command.status}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <button
+                        className="small-button"
+                        onClick={undoLastCommand}
+                        disabled={commands.length === 0}
+                    >
+                        Undo Last Command
+                    </button>
+                </div>
+            </section>
+        );
+    }
+
+
     function Uploads() {
         return (
             <section className="form-page">
@@ -761,8 +1331,8 @@ function App() {
                 <div className="connection">
                     <span
                         className={`connection-dot ${apiStatus === "Connected"
-                                ? "online"
-                                : ""
+                            ? "online"
+                            : ""
                             }`}
                     />
 
@@ -798,6 +1368,17 @@ function App() {
                     >
                         Media / Logs
                     </button>
+
+                    <button
+                        className={page === "commands" ? "active" : ""}
+                        onClick={() => {
+                            setPage("commands");
+                            loadCommandHistory();
+                        }}
+                    >
+                        Command Stream
+                    </button>
+
                 </nav>
             )}
 
@@ -824,8 +1405,8 @@ function App() {
                             <div className="startup-status">
                                 <span
                                     className={`connection-dot ${apiStatus === "Connected"
-                                            ? "online"
-                                            : ""
+                                        ? "online"
+                                        : ""
                                         }`}
                                 />
 
@@ -837,13 +1418,17 @@ function App() {
                             {pillars.map((pillar) => (
                                 <div
                                     className={`pillar-card ${pillar.active
-                                            ? "active"
-                                            : "disabled"
+                                        ? "active"
+                                        : "disabled"
                                         }`}
                                     key={pillar.id}
                                 >
                                     <div className="pillar-number">
-                                        {pillar.active ? "01" : "—"}
+                                        {pillar.id === "ingestion"
+                                            ? "01"
+                                            : pillar.id === "commands"
+                                                ? "02"
+                                                : "—"}
                                     </div>
 
                                     <span className="pillar-label">
@@ -860,10 +1445,16 @@ function App() {
                                         <button
                                             className="primary-button"
                                             onClick={() =>
-                                                setPage("dashboard")
+                                                setPage(
+                                                    pillar.id === "commands"
+                                                        ? "commands"
+                                                        : "dashboard"
+                                                )
                                             }
                                         >
-                                            Open Data Ingestion
+                                            {pillar.id === "commands"
+                                                ? "Open Command Stream"
+                                                : "Open Data Ingestion"}
                                         </button>
                                     ) : (
                                         <button
@@ -879,16 +1470,18 @@ function App() {
                     </section>
                 )}
 
-                {page === "dashboard" && <Dashboard />}
+                {page === "dashboard" && Dashboard()}
 
-                {page === "register" && <RegisterSensor />}
+                {page === "register" && RegisterSensor()}
 
-                {page === "uploads" && <Uploads />}
+                {page === "uploads" && Uploads()}
+
+                {page === "commands" && CommandStream()}
 
                 {page !== "startup" && (
                     <footer className="footer">
                         <span>
-                            Smart-X Gateway · Part 1 Data Ingestion
+                            Smart-X Gateway · Part 1 Ingestion & Part 2 Commands
                         </span>
 
                         <span>

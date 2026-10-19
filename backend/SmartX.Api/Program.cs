@@ -17,9 +17,15 @@ builder.Services.AddSingleton(new TelemetryIngestionQueue<TelemetryPacket<float>
 
 builder.Services.AddSingleton<TelemetryValidationService>();
 
-// Add Swagger services
+builder.Services.AddSingleton<CommandStore>();
+
+builder.Services.AddHostedService<CommandProcessingService>();
+
 builder.Services.AddEndpointsApiExplorer();
+
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddSingleton<RecommendationService>();
 
 builder.Services.AddCors(options =>
 {
@@ -36,7 +42,7 @@ var app = builder.Build();
 
 app.UseCors("Frontend");
 
-// Enable Swagger
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -65,6 +71,13 @@ app.MapGet("/api/health", () =>
         message = "Smart-X API is running successfully"
     });
 });
+
+app.MapGet(
+    "/api/recommendations",
+    (RecommendationService service) =>
+    {
+        return Results.Ok(service.GetRecommendations());
+    });
 
 // GET: Get all registered sensors
 app.MapGet("/api/sensors", () =>
@@ -383,5 +396,166 @@ app.MapPost(
         });
     })
 .DisableAntiforgery();
+
+app.MapPost("/api/commands",
+    (CommandRequest request, CommandStore store) =>
+    {
+        if (string.IsNullOrWhiteSpace(request.DeviceIdentifier))
+        {
+            return Results.BadRequest(new
+            {
+                error = "Device identifier is required."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.CommandType))
+        {
+            return Results.BadRequest(new
+            {
+                error = "Command type is required."
+            });
+        }
+
+        string[] allowedCommands =
+        {
+        "Pump", "Relay", "Valve", "SmartPlug"
+    };
+
+        if (!allowedCommands.Contains(
+            request.CommandType,
+            StringComparer.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new
+            {
+                error = "Unsupported command type.",
+                allowedCommands
+            });
+        }
+
+        var device = ProgramState.Sensors.FirstOrDefault(s =>
+            s.DeviceIdentifier.Equals(
+                request.DeviceIdentifier,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (device is null)
+        {
+            return Results.NotFound(new
+            {
+                error = "Device is not registered."
+            });
+        }
+
+        var command = new CommandRecord
+        {
+            DeviceIdentifier = device.DeviceIdentifier,
+            CommandType = request.CommandType,
+            Value = request.Value,
+            IsCritical = request.IsCritical,
+            Status = "Pending",
+            Timestamp = DateTime.UtcNow
+        };
+
+        store.EnqueueCommand(command);
+
+        return Results.Accepted(
+            "/api/commands/history",
+            new
+            {
+                message = "Command accepted for processing.",
+                command
+            });
+    });
+
+
+app.MapGet("/api/commands/history",
+    (CommandStore store) =>
+    {
+        return Results.Ok(store.GetRecentCommands());
+    });
+
+app.MapGet("/api/commands/states",
+    (CommandStore store) => Results.Ok(store.DeviceStates));
+
+app.MapGet("/api/commands/timeline",
+    (CommandStore store) => Results.Ok(store.GetTimeline()));
+
+app.MapGet("/api/commands/undo/status",
+    (CommandStore store) => Results.Ok(new { available = store.UndoCount > 0, undoCount = store.UndoCount }));
+
+app.MapPost("/api/commands/undo",
+    (CommandStore store) =>
+    {
+        if (!store.TryUndo(out var undoCommand) || undoCommand is null)
+        {
+            return Results.BadRequest(new
+            {
+                error = "There are no commands available to undo."
+            });
+        }
+
+        return Results.Ok(new
+        {
+            message = "The last command was reversed. The reversal was recorded in history without being added to the undo stack.",
+            command = undoCommand,
+            undoCount = store.UndoCount
+        });
+    });
+
+app.MapPost("/api/alerts/{alertId}",
+    (string alertId, CommandStore store) =>
+    {
+        if (string.IsNullOrWhiteSpace(alertId))
+        {
+            return Results.BadRequest(new
+            {
+                error = "Alert identifier is required."
+            });
+        }
+
+        bool added = store.AddAlert(alertId);
+
+        if (!added)
+        {
+            return Results.Ok(new
+            {
+                message = "This alert is already active.",
+                alertId
+            });
+        }
+
+        return Results.Created(
+            $"/api/alerts/{alertId}",
+            new
+            {
+                message = "Alert registered.",
+                alertId
+            });
+    });
+
+app.MapGet("/api/alerts",
+    (CommandStore store) =>
+    {
+        return Results.Ok(store.GetActiveAlerts());
+    });
+
+app.MapDelete("/api/alerts/{alertId}",
+    (string alertId, CommandStore store) =>
+    {
+        bool removed = store.RemoveAlert(alertId);
+
+        if (!removed)
+        {
+            return Results.NotFound(new
+            {
+                error = "Active alert not found."
+            });
+        }
+
+        return Results.Ok(new
+        {
+            message = "Alert resolved.",
+            alertId
+        });
+    });
 
 app.Run();

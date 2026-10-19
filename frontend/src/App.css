@@ -697,3 +697,19 @@ button {
         flex-direction: column;
     }
 }
+.alert-entry-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem;
+    margin: 1rem 0;
+}
+
+.alert-entry-form label {
+    flex-basis: 100%;
+}
+
+.alert-entry-form input {
+    flex: 1 1 16rem;
+    min-width: 0;
+}

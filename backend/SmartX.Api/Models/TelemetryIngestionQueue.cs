@@ -11,7 +11,7 @@
             channel = Channel.CreateBounded<T>(
                 new BoundedChannelOptions(capacity)
                 {
-                    FullMode = BoundedChannelFullMode.DropOldest,
+                    FullMode = BoundedChannelFullMode.Wait,
                     SingleReader = false,
                     SingleWriter = false
                 });
